@@ -72,6 +72,7 @@ java -Dlink.ttl.minutes=5 -jar target/linkshorter.jar
 | `link.ttl.minutes` | `1440` | Время жизни ссылки в минутах (задаётся системой) |
 | `link.max-visits.default` | `100` | Лимит переходов, если `--limit` не указан |
 | `link.max-visits.max` | `1000000` | Верхняя граница допустимого лимита |
+| `shortlink.code.length` | `7` | Длина короткого кода |
 | `storage.dir` | `data` | Каталог для `links.json`, `notifications.json`, `session.json` |
 | `shortlink.prefix` | `sho.rt/` | Префикс отображения коротких ссылок |
 
@@ -96,21 +97,24 @@ java -Dlink.ttl.minutes=5 -jar target/linkshorter.jar
 
 ```
 ru.linkshorter
-├── App                  точка входа, сборка зависимостей
-├── config               AppConfig — чтение и валидация application.properties
+├── App                  точка входа
+├── ApplicationLoader    сборка зависимостей
+├── config               AppConfig (параметры), JsonConfig (настройка Jackson)
 ├── core
 │   ├── model            Link, Notification, статусы
-│   ├── port             интерфейсы репозиториев и BrowserLauncher
-│   ├── service          LinkService, NotificationService, UrlValidator, ShortCodeGenerator
-│   └── exception        доменные исключения
+│   ├── repository       интерфейсы хранилищ
+│   ├── browser          BrowserLauncher
+│   ├── service          LinkService, SessionService, NotificationService, UrlValidator,
+│   │                    ShortCodeGenerator
+│   └── exception        LinkShorterException с типом ошибки
 ├── infra
-│   ├── storage          JSON-репозитории (Link, Notification, Session)
+│   ├── storage          JSON-репозитории
 │   └── browser          DesktopBrowserLauncher
-└── ui.cli               Cli — парсинг команд и вывод
+└── ui.cli               Cli, Command (enum команд), CliMessages (тексты интерфейса)
 ```
 
-Слои разделены интерфейсами (`core.port`), зависимости передаются через конструкторы.
-`core` не знает про файлы и `java.awt`.
+Слои разделены интерфейсами (`core.repository`, `core.browser`), зависимости передаются
+через конструкторы (Lombok `@RequiredArgsConstructor`). `core` не знает про файлы и `java.awt`.
 
 ## Тестирование
 
@@ -118,7 +122,7 @@ ru.linkshorter
 mvn test
 ```
 
-47 тестов (JUnit 5 + AssertJ):
+46 тестов (JUnit 5 + AssertJ):
 
 - unit: валидация URL, генерация кодов, модель `Link`, `LinkService` (права, лимиты, TTL,
   уведомления), конфигурация;

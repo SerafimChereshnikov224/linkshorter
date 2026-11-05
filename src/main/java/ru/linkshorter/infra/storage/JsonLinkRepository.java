@@ -1,5 +1,7 @@
 package ru.linkshorter.infra.storage;
 
+import static ru.linkshorter.core.exception.LinkShorterException.Type.STORAGE;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -10,9 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import ru.linkshorter.core.exception.StorageException;
+import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.model.Link;
-import ru.linkshorter.core.port.LinkRepository;
+import ru.linkshorter.core.repository.LinkRepository;
 
 public class JsonLinkRepository implements LinkRepository {
 
@@ -52,11 +54,11 @@ public class JsonLinkRepository implements LinkRepository {
 
     @Override
     public boolean deleteByCode(String code) {
-        boolean removed = links.remove(code) != null;
-        if (removed) {
-            persist();
+        if (links.remove(code) == null) {
+            return false;
         }
-        return removed;
+        persist();
+        return true;
     }
 
     @Override
@@ -69,25 +71,27 @@ public class JsonLinkRepository implements LinkRepository {
             return;
         }
         try {
-            List<Link> stored = mapper.readValue(file.toFile(), new TypeReference<List<Link>>() {
+            var stored = mapper.readValue(file.toFile(), new TypeReference<List<Link>>() {
             });
-            for (Link link : stored) {
+            for (var link : stored) {
                 links.put(link.getCode(), link);
             }
         } catch (IOException e) {
-            throw new StorageException("Не удалось прочитать хранилище ссылок " + file.toAbsolutePath(), e);
+            throw new LinkShorterException(
+                    STORAGE, "Не удалось прочитать хранилище ссылок " + file.toAbsolutePath(), e);
         }
     }
 
     private void persist() {
         try {
-            Path parent = file.toAbsolutePath().getParent();
+            var parent = file.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
             mapper.writeValue(file.toFile(), new ArrayList<>(links.values()));
         } catch (IOException e) {
-            throw new StorageException("Не удалось сохранить хранилище ссылок " + file.toAbsolutePath(), e);
+            throw new LinkShorterException(
+                    STORAGE, "Не удалось сохранить хранилище ссылок " + file.toAbsolutePath(), e);
         }
     }
 }

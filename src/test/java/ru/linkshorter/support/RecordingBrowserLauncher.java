@@ -2,7 +2,7 @@ package ru.linkshorter.support;
 
 import java.util.ArrayList;
 import java.util.List;
-import ru.linkshorter.core.port.BrowserLauncher;
+import ru.linkshorter.core.browser.BrowserLauncher;
 
 public class RecordingBrowserLauncher implements BrowserLauncher {
 

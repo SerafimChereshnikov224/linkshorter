@@ -5,11 +5,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import ru.linkshorter.core.model.Link;
 import ru.linkshorter.core.model.Notification;
 import ru.linkshorter.core.model.NotificationType;
-import ru.linkshorter.core.port.NotificationRepository;
+import ru.linkshorter.core.repository.NotificationRepository;
 
+@RequiredArgsConstructor
 public class NotificationService {
 
     private static final DateTimeFormatter TIME_FORMAT =
@@ -19,46 +21,39 @@ public class NotificationService {
     private final String shortLinkPrefix;
     private final Clock clock;
 
-    public NotificationService(
-            NotificationRepository repository, String shortLinkPrefix, Clock clock) {
-        this.repository = repository;
-        this.shortLinkPrefix = shortLinkPrefix;
-        this.clock = clock;
-    }
-
     public Notification notifyLimitReached(Link link) {
-        String message = "Лимит переходов исчерпан: " + display(link.getCode())
+        var message = "Лимит переходов исчерпан: " + display(link.getCode())
                 + " больше недоступна (совершено " + link.getVisits()
                 + " из " + link.getMaxVisits() + " переходов).";
         return notify(link, NotificationType.LIMIT_REACHED, message);
     }
 
     public Notification notifyExpired(Link link) {
-        String message = "Срок действия ссылки " + display(link.getCode())
+        var message = "Срок действия ссылки " + display(link.getCode())
                 + " истёк (" + TIME_FORMAT.format(link.getExpiresAt())
                 + "), ссылка удалена.";
         return notify(link, NotificationType.EXPIRED, message);
     }
 
-    private Notification notify(Link link, NotificationType type, String message) {
-        Notification notification = new Notification(
-                UUID.randomUUID().toString(),
-                link.getOwnerUuid(),
-                link.getCode(),
-                type,
-                message,
-                clock.instant());
-        return repository.save(notification);
-    }
-
     public List<Notification> readAllAndMarkRead(String ownerUuid) {
-        List<Notification> notifications = repository.findByOwner(ownerUuid);
+        var notifications = repository.findByOwner(ownerUuid);
         repository.markAllReadByOwner(ownerUuid, clock.instant());
         return notifications;
     }
 
     public long unreadCount(String ownerUuid) {
         return repository.countUnreadByOwner(ownerUuid);
+    }
+
+    private Notification notify(Link link, NotificationType type, String message) {
+        return repository.save(Notification.builder()
+                .id(UUID.randomUUID().toString())
+                .ownerUuid(link.getOwnerUuid())
+                .linkCode(link.getCode())
+                .type(type)
+                .message(message)
+                .createdAt(clock.instant())
+                .build());
     }
 
     private String display(String code) {

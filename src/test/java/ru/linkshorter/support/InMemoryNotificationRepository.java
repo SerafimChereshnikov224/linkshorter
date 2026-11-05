@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import ru.linkshorter.core.model.Notification;
-import ru.linkshorter.core.port.NotificationRepository;
+import ru.linkshorter.core.repository.NotificationRepository;
 
 public class InMemoryNotificationRepository implements NotificationRepository {
 
@@ -36,7 +36,7 @@ public class InMemoryNotificationRepository implements NotificationRepository {
 
     @Override
     public void markAllReadByOwner(String ownerUuid, Instant readAt) {
-        for (Notification notification : storage.values()) {
+        for (var notification : storage.values()) {
             if (notification.getOwnerUuid().equals(ownerUuid) && !notification.isRead()) {
                 notification.setReadAt(readAt);
             }

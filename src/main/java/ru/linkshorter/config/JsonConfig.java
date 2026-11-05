@@ -1,4 +1,4 @@
-package ru.linkshorter.infra.storage;
+package ru.linkshorter.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,9 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
-public final class JsonSupport {
+public final class JsonConfig {
 
-    private JsonSupport() {
+    private JsonConfig() {
     }
 
     public static ObjectMapper mapper() {

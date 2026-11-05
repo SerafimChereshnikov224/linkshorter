@@ -1,4 +1,4 @@
-package ru.linkshorter.core.port;
+package ru.linkshorter.core.browser;
 
 public interface BrowserLauncher {
 

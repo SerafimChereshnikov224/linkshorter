@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import ru.linkshorter.core.model.Link;
-import ru.linkshorter.core.port.LinkRepository;
+import ru.linkshorter.core.repository.LinkRepository;
 
 public class InMemoryLinkRepository implements LinkRepository {
 

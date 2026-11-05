@@ -1,4 +1,4 @@
-package ru.linkshorter.core.port;
+package ru.linkshorter.core.repository;
 
 import java.util.List;
 import java.util.Optional;

@@ -1,50 +1,46 @@
 package ru.linkshorter.ui.cli;
 
+import static ru.linkshorter.core.exception.LinkShorterException.Type.VALIDATION;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import ru.linkshorter.core.browser.BrowserLauncher;
 import ru.linkshorter.core.exception.LinkShorterException;
-import ru.linkshorter.core.exception.ValidationException;
 import ru.linkshorter.core.model.Link;
-import ru.linkshorter.core.model.Notification;
-import ru.linkshorter.core.port.BrowserLauncher;
 import ru.linkshorter.core.service.LinkService;
+import ru.linkshorter.core.service.SessionService;
 
+@RequiredArgsConstructor
 public class Cli {
 
     private static final DateTimeFormatter DATE_FORMAT =
             DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private final LinkService linkService;
+    private final SessionService sessionService;
     private final BrowserLauncher browserLauncher;
+    private final InputStream in;
     private final PrintStream out;
-    private final BufferedReader in;
     private boolean running = true;
-
-    public Cli(LinkService linkService, BrowserLauncher browserLauncher, InputStream in, PrintStream out) {
-        this.linkService = linkService;
-        this.browserLauncher = browserLauncher;
-        this.in = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-        this.out = out;
-    }
 
     public void run() {
         printWelcome();
+        var reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         while (running) {
             out.print("> ");
             out.flush();
             String line;
             try {
-                line = in.readLine();
+                line = reader.readLine();
             } catch (IOException e) {
                 out.println("Ошибка чтения ввода: " + e.getMessage());
                 return;
@@ -52,10 +48,9 @@ public class Cli {
             if (line == null) {
                 break;
             }
-            if (line.isBlank()) {
-                continue;
+            if (!line.isBlank()) {
+                execute(line.trim().split("\\s+"));
             }
-            execute(line.trim().split("\\s+"));
         }
         out.println("До свидания!");
     }
@@ -68,52 +63,54 @@ public class Cli {
             linkService.purgeExpired();
             dispatch(args);
             return 0;
-        } catch (LinkShorterException e) {
+        } catch (LinkShorterException | IllegalArgumentException e) {
             out.println("Ошибка: " + e.getMessage());
-            return 1;
-        } catch (RuntimeException e) {
-            out.println("Непредвиденная ошибка: " + e.getMessage());
             return 1;
         }
     }
 
     private void dispatch(String[] args) {
-        String command = args[0].toLowerCase(Locale.ROOT);
-        switch (command) {
-            case "create", "c" -> create(args);
-            case "open", "o" -> open(args);
-            case "list", "ls" -> list();
-            case "show" -> show(args);
-            case "limit" -> limit(args);
-            case "delete", "rm" -> delete(args);
-            case "notifications", "notify", "n" -> notifications();
-            case "whoami" -> whoami();
-            case "user", "login" -> login(args);
-            case "help", "h", "?" -> printHelp();
-            case "exit", "quit", "q" -> running = false;
-            default -> out.println(
+        var command = CliCommand.from(args[0]);
+        if (command.isEmpty()) {
+            out.println(
                     "Неизвестная команда '" + args[0] + "'. Введите 'help' для списка команд.");
+            return;
+        }
+        switch (command.get()) {
+            case CREATE -> create(args);
+            case OPEN -> open(args);
+            case LIST -> list();
+            case SHOW -> show(args);
+            case LIMIT -> limit(args);
+            case DELETE -> delete(args);
+            case NOTIFICATIONS -> notifications();
+            case WHOAMI -> whoami();
+            case USER -> login(args);
+            case HELP -> printHelp();
+            case EXIT -> running = false;
         }
     }
 
     private void create(String[] args) {
         requireArgs(args, 2, "create <url> [--limit N]");
-        String url = args[1];
+        var url = args[1];
         Long maxVisits = null;
-        for (int i = 2; i < args.length; i++) {
-            String option = args[i];
+        for (var i = 2; i < args.length; i++) {
+            var option = args[i];
             if (option.equals("--limit") || option.equals("-l")) {
                 if (i + 1 >= args.length) {
-                    throw new ValidationException("После " + option + " нужно указать число.");
+                    throw new LinkShorterException(
+                            VALIDATION, "После " + option + " нужно указать число.");
                 }
                 maxVisits = parseLimit(args[++i]);
             } else {
-                throw new ValidationException(
+                throw new LinkShorterException(
+                        VALIDATION,
                         "Неизвестный параметр '" + option + "'. Используйте: create <url> [--limit N]");
             }
         }
 
-        Link link = linkService.create(url, maxVisits);
+        var link = linkService.create(url, maxVisits);
         out.println("Ссылка создана: " + linkService.display(link.getCode()));
         out.println("  Оригинал:   " + link.getOriginalUrl());
         out.println("  Владелец:   " + link.getOwnerUuid());
@@ -123,7 +120,7 @@ public class Cli {
 
     private void open(String[] args) {
         requireArgs(args, 2, "open <code>");
-        Link link = linkService.open(args[1]);
+        var link = linkService.open(args[1]);
         out.println("Переход " + link.getVisits() + "/" + describeLimit(link)
                 + ": открываю " + link.getOriginalUrl());
         browserLauncher.open(link.getOriginalUrl());
@@ -133,17 +130,17 @@ public class Cli {
     }
 
     private void list() {
-        List<Link> links = linkService.listMine();
-        long unread = linkService.unreadNotificationCount();
+        var links = linkService.listMine();
+        var unread = linkService.unreadNotificationCount();
         if (links.isEmpty()) {
             out.println("У вас пока нет ссылок. Создайте первую: create <url> [--limit N]");
         } else {
             out.printf("%-10s %-14s %-10s %-20s %s%n", "КОД", "СТАТУС", "ПЕРЕХОДЫ", "ИСТЕКАЕТ", "АДРЕС");
-            for (Link link : links) {
+            for (var link : links) {
                 out.printf(
                         "%-10s %-14s %-10s %-20s %s%n",
                         link.getCode(),
-                        link.status(java.time.Instant.now()),
+                        link.status(Instant.now()),
                         link.getVisits() + "/" + describeLimit(link),
                         DATE_FORMAT.format(link.getExpiresAt()),
                         shorten(link.getOriginalUrl(), 60));
@@ -156,11 +153,11 @@ public class Cli {
 
     private void show(String[] args) {
         requireArgs(args, 2, "show <code>");
-        Link link = linkService.findOwned(args[1]);
+        var link = linkService.findOwned(args[1]);
         out.println("Код:         " + linkService.display(link.getCode()));
         out.println("Оригинал:    " + link.getOriginalUrl());
         out.println("Владелец:    " + link.getOwnerUuid());
-        out.println("Статус:      " + link.status(java.time.Instant.now()));
+        out.println("Статус:      " + link.status(Instant.now()));
         out.println("Переходы:    " + link.getVisits() + " из " + describeLimit(link));
         out.println("Создана:     " + DATE_FORMAT.format(link.getCreatedAt()));
         out.println("Истекает:    " + DATE_FORMAT.format(link.getExpiresAt()));
@@ -168,8 +165,8 @@ public class Cli {
 
     private void limit(String[] args) {
         requireArgs(args, 3, "limit <code> <N|none>");
-        Long newLimit = args[2].equalsIgnoreCase("none") ? null : parseLimit(args[2]);
-        Link link = linkService.updateLimit(args[1], newLimit);
+        var newLimit = args[2].equalsIgnoreCase("none") ? null : parseLimit(args[2]);
+        var link = linkService.updateLimit(args[1], newLimit);
         out.println("Лимит обновлён: " + linkService.display(link.getCode())
                 + " -> " + describeLimit(link) + ".");
     }
@@ -181,20 +178,20 @@ public class Cli {
     }
 
     private void notifications() {
-        List<Notification> notifications = linkService.pullNotifications();
+        var notifications = linkService.pullNotifications();
         if (notifications.isEmpty()) {
             out.println("Уведомлений нет.");
             return;
         }
         out.println("Уведомления (" + notifications.size() + "):");
-        for (Notification notification : notifications) {
+        for (var notification : notifications) {
             out.println("  [" + DATE_FORMAT.format(notification.getCreatedAt()) + "] "
                     + notification.getType() + ": " + notification.getMessage());
         }
     }
 
     private void whoami() {
-        Optional<UUID> user = linkService.peekUser();
+        var user = sessionService.peekUser();
         if (user.isPresent()) {
             out.println("Текущий пользователь: " + user.get());
         } else {
@@ -208,71 +205,40 @@ public class Cli {
         try {
             uuid = UUID.fromString(args[1]);
         } catch (IllegalArgumentException e) {
-            throw new ValidationException("Некорректный UUID: " + args[1]);
+            throw new LinkShorterException(VALIDATION, "Некорректный UUID: " + args[1]);
         }
-        linkService.login(uuid);
+        sessionService.login(uuid);
         out.println("Вы вошли как " + uuid + ".");
     }
 
     private void printHelp() {
-        out.println("""
-                Команды:
-                  create <url> [--limit N]  сократить ссылку (N — максимальное число переходов)
-                  open <code>               перейти по короткой ссылке в браузере
-                  list                      показать мои ссылки
-                  show <code>               подробности ссылки
-                  limit <code> <N|none>     изменить лимит переходов (none — без ограничения)
-                  delete <code>             удалить ссылку
-                  notifications             показать уведомления
-                  whoami                    показать текущий UUID
-                  user <uuid>               войти под указанным UUID
-                  help                      этот список
-                  exit                      выход
-
-                Примеры:
-                  create https://ru.stackoverflow.com --limit 5
-                  create https://www.baeldung.com/java-9-http-client
-                  open sho.rt/aB3dE9x
-                  limit sho.rt/aB3dE9x 20
-                """);
+        out.println(CliMessages.HELP);
     }
 
     private void printWelcome() {
-        out.println("""
-                ==========================================
-                  LinkShorter — консольный сервис ссылок
-                ==========================================
-                Введите 'help' для списка команд.
-                """);
+        out.println(CliMessages.WELCOME);
     }
 
     private void requireArgs(String[] args, int minimum, String usage) {
         if (args.length < minimum) {
-            throw new ValidationException("Использование: " + usage);
+            throw new LinkShorterException(VALIDATION, "Использование: " + usage);
         }
     }
 
     private Long parseLimit(String raw) {
-        long value;
         try {
-            value = Long.parseLong(raw);
+            return Long.parseLong(raw);
         } catch (NumberFormatException e) {
-            throw new ValidationException("Лимит должен быть целым числом, получено: " + raw);
+            throw new LinkShorterException(
+                    VALIDATION, "Лимит должен быть целым числом, получено: " + raw);
         }
-        return value;
     }
 
     private String describeLimit(Link link) {
-        if (link.getMaxVisits() == null) {
-            return "без лимита";
-        }
-        return String.valueOf(link.getMaxVisits());
+        return link.getMaxVisits() == null ? "без лимита" : String.valueOf(link.getMaxVisits());
     }
 
     private String shorten(String value, int maxLength) {
-        if (value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength - 3) + "...";
+        return value.length() <= maxLength ? value : value.substring(0, maxLength - 3) + "...";
     }
 }

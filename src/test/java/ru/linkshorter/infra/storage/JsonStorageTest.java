@@ -12,7 +12,8 @@ import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import ru.linkshorter.core.exception.StorageException;
+import ru.linkshorter.config.JsonConfig;
+import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.model.Link;
 import ru.linkshorter.core.model.LinkStatus;
 import ru.linkshorter.core.model.Notification;
@@ -22,21 +23,27 @@ class JsonStorageTest {
 
     private static final Instant NOW = Instant.parse("2026-01-01T10:00:00Z");
 
-    private final ObjectMapper mapper = JsonSupport.mapper();
+    private final ObjectMapper mapper = JsonConfig.mapper();
 
     @TempDir
     Path tempDir;
 
     @Test
     void linksSurviveRepositoryRestart() {
-        Path file = tempDir.resolve("links.json");
-        Link link = new Link(
-                "abc1234", "https://example.com", "user-1", NOW, NOW.plusSeconds(3600), 5L);
+        var file = tempDir.resolve("links.json");
+        var link = Link.builder()
+                .code("abc1234")
+                .originalUrl("https://example.com")
+                .ownerUuid("user-1")
+                .createdAt(NOW)
+                .expiresAt(NOW.plusSeconds(3600))
+                .maxVisits(5L)
+                .build();
 
         new JsonLinkRepository(file, mapper).save(link);
 
-        JsonLinkRepository reloaded = new JsonLinkRepository(file, mapper);
-        Link restored = reloaded.findByCode("abc1234").orElseThrow();
+        var reloaded = new JsonLinkRepository(file, mapper);
+        var restored = reloaded.findByCode("abc1234").orElseThrow();
         assertThat(restored.getOriginalUrl()).isEqualTo("https://example.com");
         assertThat(restored.getOwnerUuid()).isEqualTo("user-1");
         assertThat(restored.getMaxVisits()).isEqualTo(5L);
@@ -46,8 +53,8 @@ class JsonStorageTest {
 
     @Test
     void sessionSurvivesRestart() {
-        Path file = tempDir.resolve("session.json");
-        UUID user = UUID.randomUUID();
+        var file = tempDir.resolve("session.json");
+        var user = UUID.randomUUID();
 
         new JsonSessionRepository(file, mapper).saveCurrentUser(user);
 
@@ -56,18 +63,30 @@ class JsonStorageTest {
 
     @Test
     void notificationsSurviveRestartAndCanBeMarkedRead() {
-        Path file = tempDir.resolve("notifications.json");
-        JsonNotificationRepository repository = new JsonNotificationRepository(file, mapper);
-        repository.save(new Notification(
-                "n-1", "user-1", "abc1234", NotificationType.LIMIT_REACHED, "limit", NOW));
-        repository.save(new Notification(
-                "n-2", "user-2", "def5678", NotificationType.EXPIRED, "expired", NOW));
+        var file = tempDir.resolve("notifications.json");
+        var repository = new JsonNotificationRepository(file, mapper);
+        repository.save(Notification.builder()
+                .id("n-1")
+                .ownerUuid("user-1")
+                .linkCode("abc1234")
+                .type(NotificationType.LIMIT_REACHED)
+                .message("limit")
+                .createdAt(NOW)
+                .build());
+        repository.save(Notification.builder()
+                .id("n-2")
+                .ownerUuid("user-2")
+                .linkCode("def5678")
+                .type(NotificationType.EXPIRED)
+                .message("expired")
+                .createdAt(NOW)
+                .build());
 
         assertThat(repository.findByOwner("user-1")).hasSize(1);
         assertThat(repository.countUnreadByOwner("user-1")).isEqualTo(1);
 
         repository.markAllReadByOwner("user-1", NOW.plusSeconds(10));
-        JsonNotificationRepository reloaded = new JsonNotificationRepository(file, mapper);
+        var reloaded = new JsonNotificationRepository(file, mapper);
 
         assertThat(reloaded.countUnreadByOwner("user-1")).isZero();
         assertThat(reloaded.countUnreadByOwner("user-2")).isEqualTo(1);
@@ -76,10 +95,10 @@ class JsonStorageTest {
 
     @Test
     void corruptedStorageFileProducesStorageException() throws IOException {
-        Path file = tempDir.resolve("links.json");
+        var file = tempDir.resolve("links.json");
         Files.writeString(file, "not a json", StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> new JsonLinkRepository(file, mapper))
-                .isInstanceOf(StorageException.class);
+                .isInstanceOf(LinkShorterException.class);
     }
 }

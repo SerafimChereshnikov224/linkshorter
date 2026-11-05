@@ -1,14 +1,17 @@
 package ru.linkshorter.core.model;
 
 import java.time.Instant;
-import java.util.Objects;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
+@AllArgsConstructor
 public class Link {
 
     private String code;
@@ -20,21 +23,6 @@ public class Link {
     private long visits;
     private boolean limitNotified;
     private boolean expiredNotified;
-
-    public Link(
-            String code,
-            String originalUrl,
-            String ownerUuid,
-            Instant createdAt,
-            Instant expiresAt,
-            Long maxVisits) {
-        this.code = Objects.requireNonNull(code, "code");
-        this.originalUrl = Objects.requireNonNull(originalUrl, "originalUrl");
-        this.ownerUuid = Objects.requireNonNull(ownerUuid, "ownerUuid");
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
-        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
-        this.maxVisits = maxVisits;
-    }
 
     public boolean isExpired(Instant now) {
         return !now.isBefore(expiresAt);

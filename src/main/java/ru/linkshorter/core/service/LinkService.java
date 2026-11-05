@@ -1,112 +1,75 @@
 package ru.linkshorter.core.service;
 
+import static ru.linkshorter.core.exception.LinkShorterException.Type.ACCESS_DENIED;
+import static ru.linkshorter.core.exception.LinkShorterException.Type.NOT_FOUND;
+import static ru.linkshorter.core.exception.LinkShorterException.Type.STORAGE;
+import static ru.linkshorter.core.exception.LinkShorterException.Type.UNAVAILABLE;
+import static ru.linkshorter.core.exception.LinkShorterException.Type.VALIDATION;
+
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import ru.linkshorter.config.AppConfig;
-import ru.linkshorter.core.exception.AccessDeniedException;
-import ru.linkshorter.core.exception.LinkNotFoundException;
-import ru.linkshorter.core.exception.LinkUnavailableException;
-import ru.linkshorter.core.exception.StorageException;
-import ru.linkshorter.core.exception.ValidationException;
+import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.model.Link;
-import ru.linkshorter.core.model.LinkStatus;
 import ru.linkshorter.core.model.Notification;
-import ru.linkshorter.core.port.LinkRepository;
-import ru.linkshorter.core.port.SessionRepository;
+import ru.linkshorter.core.repository.LinkRepository;
 
+@RequiredArgsConstructor
 public class LinkService {
 
     private static final int MAX_CODE_ATTEMPTS = 32;
 
     private final LinkRepository linkRepository;
-    private final SessionRepository sessionRepository;
+    private final SessionService sessionService;
     private final NotificationService notificationService;
     private final ShortCodeGenerator codeGenerator;
     private final UrlValidator urlValidator;
     private final AppConfig config;
     private final Clock clock;
 
-    public LinkService(
-            LinkRepository linkRepository,
-            SessionRepository sessionRepository,
-            NotificationService notificationService,
-            ShortCodeGenerator codeGenerator,
-            UrlValidator urlValidator,
-            AppConfig config,
-            Clock clock) {
-        this.linkRepository = linkRepository;
-        this.sessionRepository = sessionRepository;
-        this.notificationService = notificationService;
-        this.codeGenerator = codeGenerator;
-        this.urlValidator = urlValidator;
-        this.config = config;
-        this.clock = clock;
-    }
-
-    public UUID currentUser() {
-        Optional<UUID> existing = sessionRepository.currentUser();
-        if (existing.isPresent()) {
-            return existing.get();
-        }
-        UUID generated = UUID.randomUUID();
-        sessionRepository.saveCurrentUser(generated);
-        return generated;
-    }
-
-    public UUID login(UUID uuid) {
-        if (uuid == null) {
-            throw new ValidationException("UUID пользователя не может быть пустым.");
-        }
-        sessionRepository.saveCurrentUser(uuid);
-        return uuid;
-    }
-
-    public Optional<UUID> peekUser() {
-        return sessionRepository.currentUser();
-    }
-
     public Link create(String rawUrl, Long maxVisits) {
-        String url = urlValidator.validate(rawUrl);
-        long resolvedLimit = resolveCreateLimit(maxVisits);
-        UUID owner = currentUser();
-        Instant now = clock.instant();
-        Instant expiresAt = now.plus(config.linkTtl());
+        var url = urlValidator.validate(rawUrl);
+        var limit = maxVisits == null ? config.defaultMaxVisits() : maxVisits;
+        validateLimitRange(limit);
+        var owner = sessionService.currentUser();
+        var now = clock.instant();
+        var expiresAt = now.plus(config.linkTtl());
 
-        for (int attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
-            String code = codeGenerator.generate();
-            if (linkRepository.existsByCode(code)) {
-                continue;
+        for (var attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
+            var code = codeGenerator.generate();
+            if (!linkRepository.existsByCode(code)) {
+                return linkRepository.save(Link.builder()
+                        .code(code)
+                        .originalUrl(url)
+                        .ownerUuid(owner.toString())
+                        .createdAt(now)
+                        .expiresAt(expiresAt)
+                        .maxVisits(limit)
+                        .build());
             }
-            Link link = new Link(code, url, owner.toString(), now, expiresAt, resolvedLimit);
-            return linkRepository.save(link);
         }
-        throw new StorageException(
-                "Не удалось подобрать уникальный короткий код, попробуйте ещё раз.",
-                new IllegalStateException("Exceeded " + MAX_CODE_ATTEMPTS + " attempts"));
+        throw new LinkShorterException(
+                STORAGE, "Не удалось подобрать уникальный короткий код, попробуйте ещё раз.");
     }
 
     public Link open(String rawCode) {
-        String code = normalizeCode(rawCode);
-        Link link = linkRepository.findByCode(code).orElseThrow(() -> new LinkNotFoundException(code));
-        Instant now = clock.instant();
+        var code = normalizeCode(rawCode);
+        var link = linkRepository.findByCode(code).orElseThrow(() -> notFound(code));
+        var now = clock.instant();
 
         if (link.isExpired(now)) {
             notifyExpiredOnce(link);
             linkRepository.deleteByCode(code);
-            throw new LinkUnavailableException(
-                    code,
-                    LinkStatus.EXPIRED,
+            throw new LinkShorterException(
+                    UNAVAILABLE,
                     "Ссылка " + display(code) + " недоступна: истёк срок действия. Ссылка удалена.");
         }
         if (link.isLimitReached()) {
             notifyLimitOnce(link);
-            throw new LinkUnavailableException(
-                    code,
-                    LinkStatus.LIMIT_REACHED,
+            throw new LinkShorterException(
+                    UNAVAILABLE,
                     "Ссылка " + display(code) + " недоступна: исчерпан лимит переходов ("
                             + link.getVisits() + " из " + link.getMaxVisits() + ").");
         }
@@ -121,30 +84,27 @@ public class LinkService {
     }
 
     public List<Link> listMine() {
-        String owner = currentUser().toString();
+        var owner = sessionService.currentUser().toString();
         return linkRepository.findByOwner(owner).stream()
                 .sorted(Comparator.comparing(Link::getCreatedAt).reversed())
                 .toList();
     }
 
     public Link findOwned(String rawCode) {
-        String code = normalizeCode(rawCode);
-        Link link = linkRepository.findByCode(code).orElseThrow(() -> new LinkNotFoundException(code));
-        if (!link.getOwnerUuid().equals(currentUser().toString())) {
-            throw new AccessDeniedException(
-                    "Ссылка " + display(code) + " принадлежит другому пользователю.");
+        var code = normalizeCode(rawCode);
+        var link = linkRepository.findByCode(code).orElseThrow(() -> notFound(code));
+        if (!link.getOwnerUuid().equals(sessionService.currentUser().toString())) {
+            throw new LinkShorterException(
+                    ACCESS_DENIED, "Ссылка " + display(code) + " принадлежит другому пользователю.");
         }
         return link;
     }
 
     public Link updateLimit(String rawCode, Long newLimit) {
-        Link link = findOwned(rawCode);
-        Instant now = clock.instant();
-        if (link.isExpired(now)) {
-            throw new LinkUnavailableException(
-                    link.getCode(),
-                    LinkStatus.EXPIRED,
-                    "Нельзя изменить лимит: срок действия ссылки истёк.");
+        var link = findOwned(rawCode);
+        if (link.isExpired(clock.instant())) {
+            throw new LinkShorterException(
+                    UNAVAILABLE, "Нельзя изменить лимит: срок действия ссылки истёк.");
         }
 
         if (newLimit == null) {
@@ -153,7 +113,8 @@ public class LinkService {
         } else {
             validateLimitRange(newLimit);
             if (newLimit <= link.getVisits()) {
-                throw new ValidationException(
+                throw new LinkShorterException(
+                        VALIDATION,
                         "Новый лимит (" + newLimit + ") должен быть больше уже совершённых переходов ("
                                 + link.getVisits() + ").");
             }
@@ -166,30 +127,28 @@ public class LinkService {
     }
 
     public void delete(String rawCode) {
-        Link link = findOwned(rawCode);
-        linkRepository.deleteByCode(link.getCode());
+        linkRepository.deleteByCode(findOwned(rawCode).getCode());
     }
 
     public int purgeExpired() {
-        Instant now = clock.instant();
-        int removed = 0;
-        for (Link link : linkRepository.findAll()) {
-            if (!link.isExpired(now)) {
-                continue;
+        var now = clock.instant();
+        var removed = 0;
+        for (var link : linkRepository.findAll()) {
+            if (link.isExpired(now)) {
+                notifyExpiredOnce(link);
+                linkRepository.deleteByCode(link.getCode());
+                removed++;
             }
-            notifyExpiredOnce(link);
-            linkRepository.deleteByCode(link.getCode());
-            removed++;
         }
         return removed;
     }
 
     public List<Notification> pullNotifications() {
-        return notificationService.readAllAndMarkRead(currentUser().toString());
+        return notificationService.readAllAndMarkRead(sessionService.currentUser().toString());
     }
 
     public long unreadNotificationCount() {
-        return notificationService.unreadCount(currentUser().toString());
+        return notificationService.unreadCount(sessionService.currentUser().toString());
     }
 
     public String display(String code) {
@@ -214,35 +173,31 @@ public class LinkService {
         notificationService.notifyExpired(link);
     }
 
-    private long resolveCreateLimit(Long maxVisits) {
-        if (maxVisits == null) {
-            return config.defaultMaxVisits();
-        }
-        validateLimitRange(maxVisits);
-        return maxVisits;
-    }
-
     private void validateLimitRange(long maxVisits) {
         if (maxVisits <= 0) {
-            throw new ValidationException("Лимит переходов должен быть положительным числом.");
+            throw new LinkShorterException(VALIDATION, "Лимит переходов должен быть положительным числом.");
         }
         if (maxVisits > config.maxAllowedVisits()) {
-            throw new ValidationException(
-                    "Лимит переходов не может превышать " + config.maxAllowedVisits() + ".");
+            throw new LinkShorterException(
+                    VALIDATION, "Лимит переходов не может превышать " + config.maxAllowedVisits() + ".");
         }
+    }
+
+    private LinkShorterException notFound(String code) {
+        return new LinkShorterException(NOT_FOUND, "Ссылка с кодом '" + code + "' не найдена.");
     }
 
     private String normalizeCode(String rawCode) {
         if (rawCode == null || rawCode.isBlank()) {
-            throw new ValidationException("Не указан короткий код ссылки.");
+            throw new LinkShorterException(VALIDATION, "Не указан короткий код ссылки.");
         }
-        String candidate = rawCode.trim();
-        int lastSlash = candidate.lastIndexOf('/');
+        var candidate = rawCode.trim();
+        var lastSlash = candidate.lastIndexOf('/');
         if (lastSlash >= 0) {
             candidate = candidate.substring(lastSlash + 1);
         }
         if (candidate.isBlank()) {
-            throw new ValidationException("Не указан короткий код ссылки.");
+            throw new LinkShorterException(VALIDATION, "Не указан короткий код ссылки.");
         }
         return candidate;
     }

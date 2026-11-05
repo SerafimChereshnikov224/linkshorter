@@ -2,7 +2,7 @@ package ru.linkshorter.support;
 
 import java.util.Optional;
 import java.util.UUID;
-import ru.linkshorter.core.port.SessionRepository;
+import ru.linkshorter.core.repository.SessionRepository;
 
 public class InMemorySessionRepository implements SessionRepository {
 

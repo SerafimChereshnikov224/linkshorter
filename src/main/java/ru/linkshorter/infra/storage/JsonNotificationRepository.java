@@ -1,5 +1,7 @@
 package ru.linkshorter.infra.storage;
 
+import static ru.linkshorter.core.exception.LinkShorterException.Type.STORAGE;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -10,9 +12,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import ru.linkshorter.core.exception.StorageException;
+import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.model.Notification;
-import ru.linkshorter.core.port.NotificationRepository;
+import ru.linkshorter.core.repository.NotificationRepository;
 
 public class JsonNotificationRepository implements NotificationRepository {
 
@@ -51,8 +53,8 @@ public class JsonNotificationRepository implements NotificationRepository {
 
     @Override
     public void markAllReadByOwner(String ownerUuid, Instant readAt) {
-        boolean changed = false;
-        for (Notification notification : notifications.values()) {
+        var changed = false;
+        for (var notification : notifications.values()) {
             if (notification.getOwnerUuid().equals(ownerUuid) && !notification.isRead()) {
                 notification.setReadAt(readAt);
                 changed = true;
@@ -68,28 +70,27 @@ public class JsonNotificationRepository implements NotificationRepository {
             return;
         }
         try {
-            List<Notification> stored =
-                    mapper.readValue(file.toFile(), new TypeReference<List<Notification>>() {
-                    });
-            for (Notification notification : stored) {
+            var stored = mapper.readValue(file.toFile(), new TypeReference<List<Notification>>() {
+            });
+            for (var notification : stored) {
                 notifications.put(notification.getId(), notification);
             }
         } catch (IOException e) {
-            throw new StorageException(
-                    "Не удалось прочитать хранилище уведомлений " + file.toAbsolutePath(), e);
+            throw new LinkShorterException(
+                    STORAGE, "Не удалось прочитать хранилище уведомлений " + file.toAbsolutePath(), e);
         }
     }
 
     private void persist() {
         try {
-            Path parent = file.toAbsolutePath().getParent();
+            var parent = file.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
             mapper.writeValue(file.toFile(), new ArrayList<>(notifications.values()));
         } catch (IOException e) {
-            throw new StorageException(
-                    "Не удалось сохранить хранилище уведомлений " + file.toAbsolutePath(), e);
+            throw new LinkShorterException(
+                    STORAGE, "Не удалось сохранить хранилище уведомлений " + file.toAbsolutePath(), e);
         }
     }
 }

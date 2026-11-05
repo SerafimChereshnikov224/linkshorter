@@ -10,15 +10,15 @@ class LinkTest {
     private static final Instant CREATED_AT = Instant.parse("2026-01-01T10:00:00Z");
 
     private Link link(long visits, Long maxVisits) {
-        Link link = new Link(
-                "abc1234",
-                "https://example.com",
-                "user-1",
-                CREATED_AT,
-                CREATED_AT.plusSeconds(3600),
-                maxVisits);
-        link.setVisits(visits);
-        return link;
+        return Link.builder()
+                .code("abc1234")
+                .originalUrl("https://example.com")
+                .ownerUuid("user-1")
+                .createdAt(CREATED_AT)
+                .expiresAt(CREATED_AT.plusSeconds(3600))
+                .maxVisits(maxVisits)
+                .visits(visits)
+                .build();
     }
 
     @Test
