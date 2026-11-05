@@ -1,0 +1,13 @@
+target/
+data/
+*.log
+
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+.vscode/
+.DS_Store
+Thumbs.db
