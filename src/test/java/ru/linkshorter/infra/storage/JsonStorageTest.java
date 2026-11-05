@@ -2,6 +2,9 @@ package ru.linkshorter.infra.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static ru.linkshorter.core.model.LinkStatus.ACTIVE;
+import static ru.linkshorter.core.model.NotificationType.EXPIRED;
+import static ru.linkshorter.core.model.NotificationType.LIMIT_REACHED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -15,9 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.linkshorter.config.JsonConfig;
 import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.model.Link;
-import ru.linkshorter.core.model.LinkStatus;
 import ru.linkshorter.core.model.Notification;
-import ru.linkshorter.core.model.NotificationType;
 
 class JsonStorageTest {
 
@@ -48,7 +49,7 @@ class JsonStorageTest {
         assertThat(restored.getOwnerUuid()).isEqualTo("user-1");
         assertThat(restored.getMaxVisits()).isEqualTo(5L);
         assertThat(restored.getExpiresAt()).isEqualTo(NOW.plusSeconds(3600));
-        assertThat(restored.status(NOW)).isEqualTo(LinkStatus.ACTIVE);
+        assertThat(restored.status(NOW)).isEqualTo(ACTIVE);
     }
 
     @Test
@@ -69,7 +70,7 @@ class JsonStorageTest {
                 .id("n-1")
                 .ownerUuid("user-1")
                 .linkCode("abc1234")
-                .type(NotificationType.LIMIT_REACHED)
+                .type(LIMIT_REACHED)
                 .message("limit")
                 .createdAt(NOW)
                 .build());
@@ -77,7 +78,7 @@ class JsonStorageTest {
                 .id("n-2")
                 .ownerUuid("user-2")
                 .linkCode("def5678")
-                .type(NotificationType.EXPIRED)
+                .type(EXPIRED)
                 .message("expired")
                 .createdAt(NOW)
                 .build());

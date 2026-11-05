@@ -1,5 +1,8 @@
 package ru.linkshorter.core.service;
 
+import static ru.linkshorter.core.model.NotificationType.EXPIRED;
+import static ru.linkshorter.core.model.NotificationType.LIMIT_REACHED;
+
 import java.time.Clock;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -25,14 +28,14 @@ public class NotificationService {
         var message = "Лимит переходов исчерпан: " + display(link.getCode())
                 + " больше недоступна (совершено " + link.getVisits()
                 + " из " + link.getMaxVisits() + " переходов).";
-        return notify(link, NotificationType.LIMIT_REACHED, message);
+        return notify(link, LIMIT_REACHED, message);
     }
 
     public Notification notifyExpired(Link link) {
         var message = "Срок действия ссылки " + display(link.getCode())
                 + " истёк (" + TIME_FORMAT.format(link.getExpiresAt())
                 + "), ссылка удалена.";
-        return notify(link, NotificationType.EXPIRED, message);
+        return notify(link, EXPIRED, message);
     }
 
     public List<Notification> readAllAndMarkRead(String ownerUuid) {

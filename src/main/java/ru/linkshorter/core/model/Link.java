@@ -1,5 +1,9 @@
 package ru.linkshorter.core.model;
 
+import static ru.linkshorter.core.model.LinkStatus.ACTIVE;
+import static ru.linkshorter.core.model.LinkStatus.EXPIRED;
+import static ru.linkshorter.core.model.LinkStatus.LIMIT_REACHED;
+
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,12 +42,12 @@ public class Link {
 
     public LinkStatus status(Instant now) {
         if (isExpired(now)) {
-            return LinkStatus.EXPIRED;
+            return EXPIRED;
         }
         if (isLimitReached()) {
-            return LinkStatus.LIMIT_REACHED;
+            return LIMIT_REACHED;
         }
-        return LinkStatus.ACTIVE;
+        return ACTIVE;
     }
 
     public Long remainingVisits() {

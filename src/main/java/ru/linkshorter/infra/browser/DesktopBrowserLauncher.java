@@ -1,5 +1,7 @@
 package ru.linkshorter.infra.browser;
 
+import static ru.linkshorter.core.exception.LinkShorterException.Type.UNAVAILABLE;
+
 import java.awt.Desktop;
 import java.io.IOException;
 import java.net.URI;
@@ -13,20 +15,20 @@ public class DesktopBrowserLauncher implements BrowserLauncher {
     public void open(String url) {
         if (!Desktop.isDesktopSupported()) {
             throw new LinkShorterException(
-                    LinkShorterException.Type.UNAVAILABLE,
+                    UNAVAILABLE,
                     "Открытие браузера недоступно в этой среде. Ссылка: " + url);
         }
         var desktop = Desktop.getDesktop();
         if (!desktop.isSupported(Desktop.Action.BROWSE)) {
             throw new LinkShorterException(
-                    LinkShorterException.Type.UNAVAILABLE,
+                    UNAVAILABLE,
                     "Система не поддерживает действие BROWSE. Ссылка: " + url);
         }
         try {
             desktop.browse(new URI(url));
         } catch (IOException | URISyntaxException e) {
             throw new LinkShorterException(
-                    LinkShorterException.Type.UNAVAILABLE,
+                    UNAVAILABLE,
                     "Не удалось открыть браузер: " + e.getMessage(),
                     e);
         }

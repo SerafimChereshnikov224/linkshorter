@@ -1,6 +1,9 @@
 package ru.linkshorter.core.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static ru.linkshorter.core.model.LinkStatus.ACTIVE;
+import static ru.linkshorter.core.model.LinkStatus.EXPIRED;
+import static ru.linkshorter.core.model.LinkStatus.LIMIT_REACHED;
 
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -25,7 +28,7 @@ class LinkTest {
     void linkIsActiveWhileNotExpiredAndLimitNotReached() {
         Link link = link(1, 5L);
 
-        assertThat(link.status(CREATED_AT)).isEqualTo(LinkStatus.ACTIVE);
+        assertThat(link.status(CREATED_AT)).isEqualTo(ACTIVE);
         assertThat(link.isAvailable(CREATED_AT)).isTrue();
         assertThat(link.remainingVisits()).isEqualTo(4L);
     }
@@ -36,7 +39,7 @@ class LinkTest {
 
         assertThat(link.isExpired(CREATED_AT.plusSeconds(3599))).isFalse();
         assertThat(link.isExpired(CREATED_AT.plusSeconds(3600))).isTrue();
-        assertThat(link.status(CREATED_AT.plusSeconds(3600))).isEqualTo(LinkStatus.EXPIRED);
+        assertThat(link.status(CREATED_AT.plusSeconds(3600))).isEqualTo(EXPIRED);
     }
 
     @Test
@@ -44,7 +47,7 @@ class LinkTest {
         Link link = link(5, 5L);
 
         assertThat(link.isLimitReached()).isTrue();
-        assertThat(link.status(CREATED_AT)).isEqualTo(LinkStatus.LIMIT_REACHED);
+        assertThat(link.status(CREATED_AT)).isEqualTo(LIMIT_REACHED);
         assertThat(link.isAvailable(CREATED_AT)).isFalse();
         assertThat(link.remainingVisits()).isEqualTo(0L);
     }
@@ -55,13 +58,13 @@ class LinkTest {
 
         assertThat(link.isLimitReached()).isFalse();
         assertThat(link.remainingVisits()).isNull();
-        assertThat(link.status(CREATED_AT)).isEqualTo(LinkStatus.ACTIVE);
+        assertThat(link.status(CREATED_AT)).isEqualTo(ACTIVE);
     }
 
     @Test
     void expiredStatusHasPriorityOverLimit() {
         Link link = link(5, 5L);
 
-        assertThat(link.status(CREATED_AT.plusSeconds(3601))).isEqualTo(LinkStatus.EXPIRED);
+        assertThat(link.status(CREATED_AT.plusSeconds(3601))).isEqualTo(EXPIRED);
     }
 }

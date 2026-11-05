@@ -6,6 +6,8 @@ import static ru.linkshorter.core.exception.LinkShorterException.Type.ACCESS_DEN
 import static ru.linkshorter.core.exception.LinkShorterException.Type.NOT_FOUND;
 import static ru.linkshorter.core.exception.LinkShorterException.Type.UNAVAILABLE;
 import static ru.linkshorter.core.exception.LinkShorterException.Type.VALIDATION;
+import static ru.linkshorter.core.model.NotificationType.EXPIRED;
+import static ru.linkshorter.core.model.NotificationType.LIMIT_REACHED;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -17,7 +19,6 @@ import org.junit.jupiter.api.Test;
 import ru.linkshorter.config.AppConfig;
 import ru.linkshorter.core.exception.LinkShorterException;
 import ru.linkshorter.core.exception.LinkShorterException.Type;
-import ru.linkshorter.core.model.NotificationType;
 import ru.linkshorter.support.InMemoryLinkRepository;
 import ru.linkshorter.support.InMemoryNotificationRepository;
 import ru.linkshorter.support.InMemorySessionRepository;
@@ -136,7 +137,7 @@ class LinkServiceTest {
 
         var notifications = notificationRepository.findByOwner(created.getOwnerUuid());
         assertThat(notifications).hasSize(1);
-        assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.LIMIT_REACHED);
+        assertThat(notifications.get(0).getType()).isEqualTo(LIMIT_REACHED);
     }
 
     @Test
@@ -149,7 +150,7 @@ class LinkServiceTest {
         assertThat(linkRepository.findByCode(created.getCode())).isEmpty();
         var notifications = notificationRepository.findByOwner(created.getOwnerUuid());
         assertThat(notifications).hasSize(1);
-        assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.EXPIRED);
+        assertThat(notifications.get(0).getType()).isEqualTo(EXPIRED);
     }
 
     @Test
